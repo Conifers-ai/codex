@@ -1,0 +1,9 @@
+model = "gpt-5"
+model_provider = "azure"
+model_reasoning_effort = "medium"
+
+[model_providers.azure]
+name = "Azure OpenAI"
+env_key = "AZURE_OPENAI_API_KEY"
+query_params = { api-version = "2025-03-01-preview" }
+wire_api = "responses"
