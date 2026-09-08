@@ -60,6 +60,7 @@ use crate::tools::router::extension_tool_executors;
 use crate::tools::spec_plan::search_tool_enabled;
 use crate::tools::spec_plan::tool_suggest_enabled;
 use crate::turn_diff_tracker::TurnDiffTracker;
+use crate::turn_metadata::with_client_attempt;
 use crate::turn_timing::record_turn_ttft_metric;
 use crate::util::error_or_panic;
 use codex_analytics::AppInvocation;
@@ -1011,8 +1012,13 @@ async fn run_sampling_request(
     );
     let max_retries = turn_context.provider.info().stream_max_retries();
     let mut retries = 0;
+    let mut attempt_number = 0;
+    let mut retry_reason = None;
     let mut initial_input = Some(input);
     loop {
+        attempt_number += 1;
+        let attempt_metadata =
+            with_client_attempt(turn_metadata_header, attempt_number, retry_reason);
         let prompt_input = if let Some(input) = initial_input.take() {
             input
         } else {
@@ -1032,7 +1038,7 @@ async fn run_sampling_request(
             Arc::clone(&turn_context),
             Arc::clone(&turn_store),
             client_session,
-            turn_metadata_header,
+            attempt_metadata.as_deref(),
             Arc::clone(&turn_diff_tracker),
             &prompt,
             cancellation_token.child_token(),
@@ -1060,6 +1066,8 @@ async fn run_sampling_request(
             return Err(err);
         }
 
+        retry_reason = Some(client_retry_reason(&err));
+
         handle_retryable_response_stream_error(
             &mut retries,
             max_retries,
@@ -1070,6 +1078,21 @@ async fn run_sampling_request(
             ResponsesStreamRequest::Sampling,
         )
         .await?;
+    }
+}
+
+fn client_retry_reason(err: &CodexErr) -> &'static str {
+    match err {
+        CodexErr::Stream(..) => "stream_disconnected",
+        CodexErr::Timeout | CodexErr::RequestTimeout => "timeout",
+        CodexErr::UnexpectedStatus(_) => "unexpected_status",
+        CodexErr::ResponseStreamFailed(_) => "response_stream_failed",
+        CodexErr::ConnectionFailed(_) => "connection_failed",
+        CodexErr::InternalServerError | CodexErr::InternalAgentDied => "internal_error",
+        CodexErr::Io(_) => "io_error",
+        CodexErr::Json(_) => "json_error",
+        CodexErr::TokioJoin(_) => "task_join_error",
+        _ => "other",
     }
 }
 

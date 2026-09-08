@@ -37,6 +37,8 @@ const WORKSPACE_KIND_KEY: &str = "workspace_kind";
 const REQUEST_KIND_KEY: &str = "request_kind";
 const COMPACTION_KEY: &str = "compaction";
 const WINDOW_ID_KEY: &str = "window_id";
+const CLIENT_ATTEMPT_NUMBER_KEY: &str = "client_attempt_number";
+const CLIENT_RETRY_REASON_KEY: &str = "client_retry_reason";
 
 pub(crate) struct McpTurnMetadataContext<'a> {
     pub(crate) model: &'a str,
@@ -204,6 +206,25 @@ fn merge_turn_metadata(
                 .entry(key.clone())
                 .or_insert_with(|| Value::String(value.clone()));
         }
+    }
+    to_ascii_json_string(&metadata).ok()
+}
+
+pub(crate) fn with_client_attempt(
+    header: Option<&str>,
+    attempt_number: u64,
+    retry_reason: Option<&str>,
+) -> Option<String> {
+    let mut metadata = serde_json::from_str::<serde_json::Map<String, Value>>(header?).ok()?;
+    metadata.insert(
+        CLIENT_ATTEMPT_NUMBER_KEY.to_string(),
+        Value::Number(attempt_number.into()),
+    );
+    if let Some(retry_reason) = retry_reason {
+        metadata.insert(
+            CLIENT_RETRY_REASON_KEY.to_string(),
+            Value::String(retry_reason.to_string()),
+        );
     }
     to_ascii_json_string(&metadata).ok()
 }

@@ -1,5 +1,22 @@
 use super::*;
 
+#[test]
+fn client_attempt_metadata_is_privacy_safe_and_monotonic() {
+    let first = with_client_attempt(
+        Some(r#"{"request_kind":"turn","turn_id":"turn-1"}"#),
+        1,
+        None,
+    )
+    .expect("valid metadata");
+    let retry = with_client_attempt(Some(&first), 2, Some("stream_disconnected"))
+        .expect("valid retry metadata");
+    let value: serde_json::Value = serde_json::from_str(&retry).expect("valid json");
+
+    assert_eq!(value["client_attempt_number"], 2);
+    assert_eq!(value["client_retry_reason"], "stream_disconnected");
+    assert_eq!(value["turn_id"], "turn-1");
+}
+
 use crate::sandbox_tags::permission_profile_sandbox_tag;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
